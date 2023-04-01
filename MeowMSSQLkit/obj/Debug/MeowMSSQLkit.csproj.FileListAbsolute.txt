@@ -1,0 +1,8 @@
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\bin\Debug\MeowMSSQLkit.exe.config
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\bin\Debug\MeowMSSQLkit.exe
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\bin\Debug\MeowMSSQLkit.pdb
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\Debug\MeowMSSQLkit.csproj.AssemblyReference.cache
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\Debug\MeowMSSQLkit.csproj.SuggestedBindingRedirects.cache
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\Debug\MeowMSSQLkit.csproj.CoreCompileInputs.cache
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\Debug\MeowMSSQLkit.exe
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\Debug\MeowMSSQLkit.pdb
